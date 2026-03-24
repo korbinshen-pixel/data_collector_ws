@@ -67,8 +67,13 @@ class DatasetCollector(Node):
         self.cx = 320.0
         self.cy = 240.0
 
-        # 托盘尺寸 (米), 用于生成 models_info.yml 和 mask
-        self.pallet_size_m = (0.6, 0.6, 0.15)  # (x, y, z) 长×高×宽
+        # ★ 托盘尺寸随机范围 (米), 每帧独立采样
+        # 格式: ((x_min, x_max), (y_min, y_max), (z_min, z_max))
+        self.pallet_size_range = (
+            (0.5, 0.7),   # x (长) 范围
+            (0.5, 0.7),   # y (宽) 范围
+            (0.12, 0.18), # z (高) 范围
+        )
 
         # 采集频率 (Hz)
         self.collect_hz = 2.0
@@ -77,7 +82,6 @@ class DatasetCollector(Node):
         self.train_ratio = 0.80
 
         
-
 
         # ===================== 输出目录 =====================
         self.output_root = os.path.expanduser('~/pallet_dataset')
@@ -124,37 +128,6 @@ class DatasetCollector(Node):
 
         # 定时采集
         self.timer = self.create_timer(1.0 / self.collect_hz, self.timer_callback)
-
-        # 3D 包围盒角点 (物体坐标系, mm), 用于生成mask
-        sx, sy, sz = [s * 1000.0 for s in self.pallet_size_m]
-        
-        # 8 个角点
-        corners = np.array([
-            [-sx/2, -sy/2, -sz/2], [ sx/2, -sy/2, -sz/2],
-            [ sx/2,  sy/2, -sz/2], [-sx/2,  sy/2, -sz/2],
-            [-sx/2, -sy/2,  sz/2], [ sx/2, -sy/2,  sz/2],
-            [ sx/2,  sy/2,  sz/2], [-sx/2,  sy/2,  sz/2],
-        ], dtype=np.float64)
-        
-        # ★ 12 条边的中点
-        edge_midpoints = np.array([
-            # 底面 4 条边
-            [0, -sy/2, -sz/2], [sx/2, 0, -sz/2], [0, sy/2, -sz/2], [-sx/2, 0, -sz/2],
-            # 顶面 4 条边
-            [0, -sy/2, sz/2], [sx/2, 0, sz/2], [0, sy/2, sz/2], [-sx/2, 0, sz/2],
-            # 竖直 4 条边
-            [-sx/2, -sy/2, 0], [sx/2, -sy/2, 0], [sx/2, sy/2, 0], [-sx/2, sy/2, 0],
-        ], dtype=np.float64)
-        
-        # ★ 6 个面的中心点
-        face_centers = np.array([
-            [0, 0, -sz/2], [0, 0, sz/2],  # 上下面
-            [0, -sy/2, 0], [0, sy/2, 0],  # 前后面
-            [-sx/2, 0, 0], [sx/2, 0, 0],  # 左右面
-        ], dtype=np.float64)
-        
-        # 合并所有点（8 角 + 12 边 + 6 面 = 26 点）
-        self.bbox_corners_mm = np.vstack([corners, edge_midpoints, face_centers])
 
     # ===================== 回调函数 =====================
 
@@ -241,9 +214,42 @@ class DatasetCollector(Node):
         return R_m2c, t_m2c
 
 
+    # ===================== ★ 随机尺寸采样 =====================
+
+    def sample_pallet_size(self):
+        """在配置的范围内随机采样一个托盘尺寸 (米)，并返回对应的26个包围盒点 (mm)"""
+        sx_m = random.uniform(*self.pallet_size_range[0])
+        sy_m = random.uniform(*self.pallet_size_range[1])
+        sz_m = random.uniform(*self.pallet_size_range[2])
+
+        sx, sy, sz = sx_m * 1000.0, sy_m * 1000.0, sz_m * 1000.0
+
+        corners = np.array([
+            [-sx/2, -sy/2, -sz/2], [ sx/2, -sy/2, -sz/2],
+            [ sx/2,  sy/2, -sz/2], [-sx/2,  sy/2, -sz/2],
+            [-sx/2, -sy/2,  sz/2], [ sx/2, -sy/2,  sz/2],
+            [ sx/2,  sy/2,  sz/2], [-sx/2,  sy/2,  sz/2],
+        ], dtype=np.float64)
+
+        edge_midpoints = np.array([
+            [0, -sy/2, -sz/2], [sx/2, 0, -sz/2], [0, sy/2, -sz/2], [-sx/2, 0, -sz/2],
+            [0, -sy/2, sz/2], [sx/2, 0, sz/2], [0, sy/2, sz/2], [-sx/2, 0, sz/2],
+            [-sx/2, -sy/2, 0], [sx/2, -sy/2, 0], [sx/2, sy/2, 0], [-sx/2, sy/2, 0],
+        ], dtype=np.float64)
+
+        face_centers = np.array([
+            [0, 0, -sz/2], [0, 0, sz/2],
+            [0, -sy/2, 0], [0, sy/2, 0],
+            [-sx/2, 0, 0], [sx/2, 0, 0],
+        ], dtype=np.float64)
+
+        bbox_corners_mm = np.vstack([corners, edge_midpoints, face_centers])
+        return (sx_m, sy_m, sz_m), bbox_corners_mm
+
+
     # ===================== Mask生成 =====================
 
-    def generate_mask_from_pose(self, img_shape, R_m2c, t_m2c):
+    def generate_mask_from_pose(self, img_shape, R_m2c, t_m2c, bbox_corners_mm):
         """
         从位姿投影3D包围盒角点, 取凸包作为分割mask
         (简易方法, 适用于凸物体; 更精确需要渲染器)
@@ -252,6 +258,7 @@ class DatasetCollector(Node):
             img_shape: (H, W, C)
             R_m2c: (3,3) 旋转矩阵
             t_m2c: (3,) 平移向量(mm)
+            bbox_corners_mm: (26, 3) 当前帧的包围盒点
         Returns:
             mask: (H, W, 3) uint8, 物体区域为白色255
         """
@@ -260,7 +267,7 @@ class DatasetCollector(Node):
                       [0, 0, 1]], dtype=np.float64)
 
         # 3D -> 相机坐标
-        pts_cam = R_m2c @ self.bbox_corners_mm.T + t_m2c.reshape(3, 1)
+        pts_cam = R_m2c @ bbox_corners_mm.T + t_m2c.reshape(3, 1)
 
         # 过滤掉在相机后面的点
         if np.any(pts_cam[2, :] <= 0):
@@ -303,6 +310,9 @@ class DatasetCollector(Node):
             self.get_logger().error(f'Pose computation error: {e}')
             return
 
+        # ---- ★ 1b. 随机采样本帧托盘尺寸 ----
+        pallet_size_m, bbox_corners_mm = self.sample_pallet_size()
+
         # ---- 2. 文件名: 4位数字, 无前缀 ----
         fid = self.frame_id
         fname = f'{fid:04d}.png'
@@ -319,18 +329,18 @@ class DatasetCollector(Node):
             depth_mm = depth_img.astype(np.uint16)
         cv2.imwrite(os.path.join(self.depth_dir, fname), depth_mm)
 
-        # ---- 5. 生成并保存mask ----
-        mask = self.generate_mask_from_pose(self.latest_rgb.shape, R_m2c, t_m2c)
+        # ---- 5. 生成并保存mask (使用本帧尺寸) ----
+        mask = self.generate_mask_from_pose(self.latest_rgb.shape, R_m2c, t_m2c, bbox_corners_mm)
         cv2.imwrite(os.path.join(self.mask_dir, fname), mask)
 
 
         # ---- 6. 累积gt标注 (Linemod gt.yml格式) ----
-        # cam_R_m2c: 旋转矩阵展平为9个float的列表
-        # cam_t_m2c: 平移向量3个float的列表, 单位mm
+        # ★ 新增 pallet_size_m 字段记录本帧实际尺寸
         self.gt_dict[fid] = [{
             'cam_R_m2c': R_m2c.flatten().tolist(),
             'cam_t_m2c': t_m2c.tolist(),
-            'obj_id': self.object_id
+            'obj_id': self.object_id,
+            'pallet_size_m': list(pallet_size_m),  # ★ (sx, sy, sz) in meters
         }]
 
         # ---- 7. 累积相机内参 (Linemod info.yml格式) ----
@@ -347,6 +357,7 @@ class DatasetCollector(Node):
         self.get_logger().info(
             f'Frame {fid:04d} | '
             f't=({t_mm[0]:.1f}, {t_mm[1]:.1f}, {t_mm[2]:.1f})mm | '
+            f'size=({pallet_size_m[0]:.3f},{pallet_size_m[1]:.3f},{pallet_size_m[2]:.3f})m | '
             f'Total: {fid + 1} frames')
 
         self.frame_id += 1
@@ -402,7 +413,10 @@ class DatasetCollector(Node):
             f'({self.train_ratio*100:.0f}%/{(1-self.train_ratio)*100:.0f}%)')
 
         # ---- models/models_info.yml ----
-        sx, sy, sz = [s * 1000.0 for s in self.pallet_size_m]  # mm
+        # ★ 使用尺寸范围的中值作为代表尺寸
+        sx = (self.pallet_size_range[0][0] + self.pallet_size_range[0][1]) / 2 * 1000.0
+        sy = (self.pallet_size_range[1][0] + self.pallet_size_range[1][1]) / 2 * 1000.0
+        sz = (self.pallet_size_range[2][0] + self.pallet_size_range[2][1]) / 2 * 1000.0
         diameter = float(np.sqrt(sx**2 + sy**2 + sz**2))
         models_info = {
             self.object_id: {
@@ -413,13 +427,17 @@ class DatasetCollector(Node):
                 'size_x': float(sx),
                 'size_y': float(sy),
                 'size_z': float(sz),
+                # ★ 同时记录实际随机范围，供训练脚本参考
+                'size_x_range': list(self.pallet_size_range[0]),
+                'size_y_range': list(self.pallet_size_range[1]),
+                'size_z_range': list(self.pallet_size_range[2]),
             }
         }
         models_info_path = os.path.join(self.model_dir, 'models_info.yml')
         with open(models_info_path, 'w') as f:
             yaml.dump(models_info, f, default_flow_style=False)
         self.get_logger().info(f'  Written: {models_info_path}')
-        self.get_logger().info(f'  Pallet diameter: {diameter:.1f} mm')
+        self.get_logger().info(f'  Pallet diameter (mean): {diameter:.1f} mm')
 
         self.get_logger().info('='*50)
         self.get_logger().info(f'Dataset complete! {n_frames} frames saved to:')
