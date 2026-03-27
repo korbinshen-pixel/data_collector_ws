@@ -380,7 +380,7 @@
       </joint>
     </model>
 
-    <!-- RGBD 相机 -->
+    <!-- RGBD 相机 + LiDAR 传感器组 -->
     <model name="rgbd_camera">
       <static>true</static>
       <pose>4 0 0.5 0 0.0 3.14</pose>
@@ -399,7 +399,7 @@
           <update_rate>30</update_rate>
           <visualize>true</visualize>
           <camera>
-            <horizontal_fov>1.047</horizontal_fov>
+            <horizontal_fov>1.1015</horizontal_fov>
             <image>
               <width>640</width>
               <height>480</height>
@@ -420,14 +420,13 @@
           </plugin>
         </sensor>
 
-
         <!-- 深度相机 -->
         <sensor name="depth_camera" type="depth">
           <always_on>true</always_on>
           <update_rate>30</update_rate>
           <visualize>false</visualize>
           <camera>
-            <horizontal_fov>1.047</horizontal_fov>
+            <horizontal_fov>1.0192</horizontal_fov>
             <image>
               <width>640</width>
               <height>480</height>
@@ -447,6 +446,57 @@
             <frame_name>camera_link</frame_name>
           </plugin>
         </sensor>
+
+        <!-- ★ LiDAR 传感器 (16线, 相对 camera_link 偏移) -->
+        <!--
+          pose: x y z roll pitch yaw (相对 camera_link 坐标系, 单位: 米/弧度)
+          示例: LiDAR 安装在相机正右方 5cm 处 (camera_link Y轴负方向)
+          ★ 请按实际硬件测量修改这 6 个数值
+        -->
+        <sensor name="lidar" type="ray">
+          <pose>0 -0.05 0 0 0 0</pose>
+          <always_on>true</always_on>
+          <update_rate>10</update_rate>
+          <visualize>false</visualize>
+          <ray>
+            <scan>
+              <!-- 水平扫描: 360° 全向, 360 个采样点 -->
+              <horizontal>
+                <samples>360</samples>
+                <resolution>1</resolution>
+                <min_angle>-3.14159265</min_angle>
+                <max_angle>3.14159265</max_angle>
+              </horizontal>
+              <!-- 垂直扫描: 16线, ±15° -->
+              <vertical>
+                <samples>16</samples>
+                <resolution>1</resolution>
+                <min_angle>-0.26180</min_angle>
+                <max_angle>0.26180</max_angle>
+              </vertical>
+            </scan>
+            <range>
+              <min>0.1</min>
+              <max>20.0</max>
+              <resolution>0.01</resolution>
+            </range>
+            <noise>
+              <type>gaussian</type>
+              <mean>0.0</mean>
+              <stddev>0.01</stddev>
+            </noise>
+          </ray>
+          <plugin name="lidar_plugin" filename="libgazebo_ros_ray_sensor.so">
+            <ros>
+              <namespace>/lidar</namespace>
+              <remapping>~/out:=points</remapping>
+            </ros>
+            <!-- 输出为 PointCloud2, 话题: /lidar/points -->
+            <output_type>sensor_msgs/PointCloud2</output_type>
+            <frame_name>camera_link</frame_name>
+          </plugin>
+        </sensor>
+
       </link>
     </model>
 
@@ -460,5 +510,3 @@
 
   </world>
 </sdf>
-
-
