@@ -203,9 +203,9 @@
       <static>false</static>
       <pose>0 0 0 0 0 0</pose>
       
-      <!-- 托盘主体（正方形平板） -->
+      <!-- 托盘主体（长方形平板） -->
       <link name="pallet_base">
-        <pose>0 0 0.15 0 0 0</pose>
+        <pose>0 0 0.05875 0 0 0</pose>
         
         <inertial>
           <mass>2.0</mass>
@@ -222,10 +222,11 @@
         <collision name="base_collision">
           <geometry>
             <box>
-              <size>0.6 0.6 0.1</size>
+              <size>0.6 0.5 0.0325</size>
             </box>
           </geometry>
           <surface>
+          ‵‵‵‵‵‵‵
             <friction>
               <ode>
                 <mu>0.8</mu>
@@ -238,7 +239,7 @@
         <visual name="base_visual">
           <geometry>
             <box>
-              <size>0.6 0.6 0.1</size>
+              <size>0.6 0.5 0.0325</size>
             </box>
           </geometry>
           <material>
@@ -251,7 +252,7 @@
       
       <!-- 左侧支撑腿 -->
       <link name="left_leg">
-        <pose>0.0 0.25 0.05 0 0 0</pose>
+        <pose>0.0 0.2125 0.02125 0 0 0</pose>
         
         <inertial>
           <mass>0.5</mass>
@@ -268,7 +269,7 @@
         <collision name="left_leg_collision">
           <geometry>
             <box>
-              <size>0.6 0.1 0.1</size>
+              <size>0.6 0.075 0.0425</size>
             </box>
           </geometry>
         </collision>
@@ -276,7 +277,7 @@
         <visual name="left_leg_visual">
           <geometry>
             <box>
-              <size>0.6 0.1 0.1</size>
+              <size>0.6 0.075 0.0425</size>
             </box>
           </geometry>
           <material>
@@ -289,7 +290,7 @@
       
       <!-- 右侧支撑腿 -->
       <link name="center_leg">
-        <pose>0.0 -0.25 0.05 0 0 0</pose>
+        <pose>0.0 -0.2125 0.02125 0 0 0</pose>
         
         <inertial>
           <mass>0.5</mass>
@@ -306,7 +307,7 @@
         <collision name="center_leg_collision">
           <geometry>
             <box>
-              <size>0.6 0.1 0.1</size>
+              <size>0.6 0.075 0.0425</size>
             </box>
           </geometry>
         </collision>
@@ -314,7 +315,7 @@
         <visual name="center_leg_visual">
           <geometry>
             <box>
-              <size>0.6 0.1 0.1</size>
+              <size>0.6 0.075 0.0425</size>
             </box>
           </geometry>
           <material>
@@ -327,7 +328,7 @@
       
       <!-- 中间支撑腿 -->
       <link name="right_leg">
-        <pose>0 0 0.05 0 0 0</pose>
+        <pose>0 0 0.021255 0 0 0</pose>
         
         <inertial>
           <mass>0.5</mass>
@@ -344,7 +345,7 @@
         <collision name="right_leg_collision">
           <geometry>
             <box>
-              <size>0.6 0.1 0.1</size>
+              <size>0.6 0.09 0.0425</size>
             </box>
           </geometry>
         </collision>
@@ -352,7 +353,7 @@
         <visual name="right_leg_visual">
           <geometry>
             <box>
-              <size>0.6 0.1 0.1</size>
+              <size>0.6 0.09 0.0425</size>
             </box>
           </geometry>
           <material>
@@ -380,7 +381,7 @@
       </joint>
     </model>
 
-    <!-- RGBD 相机 + LiDAR 传感器组 -->
+    <!-- RGBD 相机 -->
     <model name="rgbd_camera">
       <static>true</static>
       <pose>4 0 0.5 0 0.0 3.14</pose>
@@ -420,6 +421,7 @@
           </plugin>
         </sensor>
 
+
         <!-- 深度相机 -->
         <sensor name="depth_camera" type="depth">
           <always_on>true</always_on>
@@ -446,57 +448,6 @@
             <frame_name>camera_link</frame_name>
           </plugin>
         </sensor>
-
-        <!-- ★ LiDAR 传感器 (16线, 相对 camera_link 偏移) -->
-        <!--
-          pose: x y z roll pitch yaw (相对 camera_link 坐标系, 单位: 米/弧度)
-          示例: LiDAR 安装在相机正右方 5cm 处 (camera_link Y轴负方向)
-          ★ 请按实际硬件测量修改这 6 个数值
-        -->
-        <sensor name="lidar" type="ray">
-          <pose>0 -0.05 0 0 0 0</pose>
-          <always_on>true</always_on>
-          <update_rate>10</update_rate>
-          <visualize>false</visualize>
-          <ray>
-            <scan>
-              <!-- 水平扫描: 360° 全向, 360 个采样点 -->
-              <horizontal>
-                <samples>360</samples>
-                <resolution>1</resolution>
-                <min_angle>-3.14159265</min_angle>
-                <max_angle>3.14159265</max_angle>
-              </horizontal>
-              <!-- 垂直扫描: 16线, ±15° -->
-              <vertical>
-                <samples>16</samples>
-                <resolution>1</resolution>
-                <min_angle>-0.26180</min_angle>
-                <max_angle>0.26180</max_angle>
-              </vertical>
-            </scan>
-            <range>
-              <min>0.1</min>
-              <max>20.0</max>
-              <resolution>0.01</resolution>
-            </range>
-            <noise>
-              <type>gaussian</type>
-              <mean>0.0</mean>
-              <stddev>0.01</stddev>
-            </noise>
-          </ray>
-          <plugin name="lidar_plugin" filename="libgazebo_ros_ray_sensor.so">
-            <ros>
-              <namespace>/lidar</namespace>
-              <remapping>~/out:=points</remapping>
-            </ros>
-            <!-- 输出为 PointCloud2, 话题: /lidar/points -->
-            <output_type>sensor_msgs/PointCloud2</output_type>
-            <frame_name>camera_link</frame_name>
-          </plugin>
-        </sensor>
-
       </link>
     </model>
 
@@ -510,3 +461,5 @@
 
   </world>
 </sdf>
+
+
